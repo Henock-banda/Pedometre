@@ -124,11 +124,58 @@
     opacity: 0.85;
     line-height: 1.5;
   }
+  .hidden { display: none !important; }
+  .overlay { position: fixed; inset: 0; z-index: 50; background: linear-gradient(135deg,#667eea,#764ba2); overflow: auto; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+  .avatar { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255,255,255,0.6); flex-shrink: 0; }
+  .user-card { display: flex; align-items: center; gap: 12px; padding: 15px; }
+  .user-card > div { flex: 1; min-width: 0; }
+  .btn-sm { flex: none; padding: 8px 12px; font-size: 0.85em; }
+  .err { color: #ffd6d6; font-size: 0.9em; margin-top: 8px; }
 </style>
 </head>
 <body>
 
 <h1>👟 Podomètre</h1>
+
+<div class="card user-card">
+  <img id="avatarImg" class="avatar" alt="">
+  <div><b id="userName"></b><div id="userInfo" style="font-size:0.85em;opacity:0.85;margin-top:3px"></div></div>
+  <button class="btn-reset btn-sm" id="editProfile">Modifier</button>
+</div>
+
+<div class="overlay hidden" id="profileScreen">
+  <div class="card settings" id="profileForm">
+    <h2 style="text-align:center;margin-bottom:14px">👤 Mon compte</h2>
+    <label for="pNom">Nom</label><input id="pNom" type="text" autocomplete="family-name">
+    <label for="pPostnom" style="margin-top:10px">Postnom</label><input id="pPostnom" type="text">
+    <label for="pPrenom" style="margin-top:10px">Prénom</label><input id="pPrenom" type="text" autocomplete="given-name">
+    <label for="pPhoto" style="margin-top:10px">Photo</label><input id="pPhoto" type="file" accept="image/*">
+    <img id="pPreview" class="avatar hidden" style="margin:10px auto 0;display:block" alt="">
+    <label for="pTaille" style="margin-top:10px">Taille (cm)</label><input id="pTaille" type="number" inputmode="numeric" min="100" max="220" placeholder="Ex : 175">
+    <button class="btn-reset" id="pMeasure" style="width:100%;margin-top:10px">📏 Je ne connais pas ma taille</button>
+    <div class="err" id="pErr"></div>
+    <div class="controls" style="margin-top:12px">
+      <button class="btn-reset hidden" id="pCancel">Annuler</button>
+      <button class="btn-start" id="pSave">Enregistrer</button>
+    </div>
+  </div>
+  <div class="card settings hidden" id="heightPanel">
+    <h2 style="text-align:center">📏 Mesurer ma taille</h2>
+    <ol style="margin:12px 0 12px 18px;line-height:1.6;font-size:0.9em">
+      <li>Dos et talons contre un mur, regard droit.</li>
+      <li>Pose le téléphone <b>à plat</b> sur ta tête, bord arrière contre le mur.</li>
+      <li>Appuie sur « Lancer », puis ne bouge plus (5 s).</li>
+      <li>À la vibration, retire le téléphone et marque le mur au bord du téléphone.</li>
+      <li>Mesure du sol à la marque avec un mètre, puis entre la valeur.</li>
+    </ol>
+    <div class="status" id="hTilt">Inclinaison : —</div>
+    <div class="status" id="hMsg">Prêt</div>
+    <button class="btn-start" id="hStart" style="width:100%;margin-top:10px">▶ Lancer</button>
+    <label for="hVal" style="margin-top:12px">Taille mesurée (cm)</label>
+    <input id="hVal" type="number" inputmode="decimal" placeholder="Ex : 168.5">
+    <button class="btn-start" id="hOk" style="width:100%;margin-top:10px">Utiliser cette taille</button>
+  </div>
+</div>
 
 <div class="card">
   <div class="mode-toggle">
@@ -162,10 +209,17 @@
 </div>
 
 <div class="card settings">
-  <label for="strideLength">Longueur de foulée (cm) — auto si vide</label>
+  <label for="strideLength">Longueur de foulée (cm) — remplie par le calibrage GPS</label>
   <input type="number" id="strideLength" placeholder="Ex : 72" min="30" max="150" inputmode="numeric">
   <label for="height" style="margin-top:10px;">Votre taille (cm) — pour calculer la foulée</label>
   <input type="number" id="height" placeholder="Ex : 175" min="100" max="220" inputmode="numeric">
+</div>
+
+<div class="card">
+  <b>🎯 Calibrer ma foulée (GPS)</b>
+  <div style="font-size:0.85em;opacity:0.85;margin:6px 0 10px">Marche dehors en ligne droite (50 m ou plus) : l'appli calcule ta vraie foulée pour des mètres et kilomètres exacts.</div>
+  <button class="btn-start" id="calBtn" style="width:100%">🎯 Calibrer ma foulée</button>
+  <div class="status" id="calInfo">En attente...</div>
 </div>
 
 <div class="card">
@@ -181,7 +235,7 @@
 
 <footer class="app-footer">
   Application développée par <strong>Les Jeunes Courageux</strong><br>
-  Version 5
+  Version 6
 </footer>
 
 <script>
@@ -257,7 +311,7 @@ function addStep() {
 
 // Détection d'un pas via l'accéléromètre
 function handleMotion(event) {
-  if (!isRunning || mode !== 'auto') return;
+  if (!calib && (!isRunning || mode !== 'auto')) return;
   const acc = event.accelerationIncludingGravity;
   if (!acc || acc.x == null) return;
 
@@ -274,7 +328,7 @@ function handleMotion(event) {
   if (armed && dynamic > STEP_THRESHOLD && (now - lastStepTime) > MIN_STEP_INTERVAL) {
     lastStepTime = now;
     armed = false;
-    addStep();
+    if (calib) { calSteps++; calUpdate(); } else addStep();
   } else if (!armed && dynamic < STEP_THRESHOLD * 0.4) {
     armed = true; // prêt pour le pas suivant
   }
@@ -422,6 +476,143 @@ heightInput.addEventListener('input', () => { saveSettings(); updateDisplay(); }
 
 loadSettings();
 updateDisplay();
+
+// ===== Compte utilisateur =====
+const $ = id => document.getElementById(id);
+let profile = null;
+try { profile = JSON.parse(localStorage.getItem('pedo_profile') || 'null'); } catch (e) {}
+let photoData = '';
+const NO_PHOTO = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#ffffff44"/><text x="32" y="43" font-size="30" text-anchor="middle">👤</text></svg>');
+
+function renderUser() {
+  if (!profile) return;
+  $('userName').textContent = profile.prenom + ' ' + profile.nom + ' ' + profile.postnom;
+  $('userInfo').textContent = 'Taille : ' + profile.taille + ' cm · Foulée : ' + getStrideLength() + ' cm';
+  $('avatarImg').src = profile.photo || NO_PHOTO;
+}
+function openProfile(edit) {
+  const p = profile || {};
+  $('pNom').value = p.nom || ''; $('pPostnom').value = p.postnom || '';
+  $('pPrenom').value = p.prenom || ''; $('pTaille').value = p.taille || '';
+  photoData = p.photo || '';
+  if (photoData) { $('pPreview').src = photoData; $('pPreview').classList.remove('hidden'); }
+  else $('pPreview').classList.add('hidden');
+  $('pErr').textContent = '';
+  $('pCancel').classList.toggle('hidden', !edit);
+  $('heightPanel').classList.add('hidden');
+  $('profileForm').classList.remove('hidden');
+  $('profileScreen').classList.remove('hidden');
+}
+$('editProfile').addEventListener('click', () => openProfile(true));
+$('pCancel').addEventListener('click', () => $('profileScreen').classList.add('hidden'));
+$('pPhoto').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas'); c.width = c.height = 160;
+    const m = Math.min(img.width, img.height);
+    c.getContext('2d').drawImage(img, (img.width - m) / 2, (img.height - m) / 2, m, m, 0, 0, 160, 160);
+    photoData = c.toDataURL('image/jpeg', 0.8);
+    $('pPreview').src = photoData; $('pPreview').classList.remove('hidden');
+    URL.revokeObjectURL(img.src);
+  };
+  img.src = URL.createObjectURL(f);
+});
+$('pSave').addEventListener('click', () => {
+  const nom = $('pNom').value.trim(), postnom = $('pPostnom').value.trim(), prenom = $('pPrenom').value.trim();
+  const t = parseFloat($('pTaille').value);
+  if (!nom || !postnom || !prenom) { $('pErr').textContent = 'Remplis le nom, le postnom et le prénom.'; return; }
+  if (!(t >= 100 && t <= 220)) { $('pErr').textContent = 'Entre ta taille (100 à 220 cm) ou utilise la mesure.'; return; }
+  profile = { nom, postnom, prenom, taille: Math.round(t), photo: photoData };
+  try { localStorage.setItem('pedo_profile', JSON.stringify(profile)); } catch (e) {}
+  heightInput.value = profile.taille;
+  saveSettings(); updateDisplay(); renderUser();
+  $('profileScreen').classList.add('hidden');
+});
+
+// ===== Mesure de la taille (téléphone sur la tête) =====
+let tilt = 99, measuring = false;
+function onOrient(e) {
+  tilt = Math.max(Math.abs(e.beta || 0), Math.abs(e.gamma || 0));
+  $('hTilt').textContent = 'Inclinaison : ' + tilt.toFixed(1) + '° ' + (tilt < 4 ? '✅ à plat' : '❌ pas à plat');
+}
+$('pMeasure').addEventListener('click', () => {
+  $('profileForm').classList.add('hidden'); $('heightPanel').classList.remove('hidden');
+});
+$('hStart').addEventListener('click', async () => {
+  if (measuring) return;
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) {
+      await DeviceOrientationEvent.requestPermission();
+    }
+  } catch (e) {}
+  tilt = 99; measuring = true;
+  window.addEventListener('deviceorientation', onOrient);
+  let n = 5;
+  const t = setInterval(() => {
+    $('hMsg').textContent = 'Ne bouge pas… ' + n;
+    if (n-- > 0) return;
+    clearInterval(t); measuring = false;
+    window.removeEventListener('deviceorientation', onOrient);
+    if (tilt === 99) $('hMsg').textContent = 'Capteur d\u2019inclinaison indisponible : mesure avec un mètre.';
+    else if (tilt < 4) { if (navigator.vibrate) navigator.vibrate([300, 100, 300]); $('hMsg').textContent = '✅ Retire le téléphone sans bouger et marque le mur.'; }
+    else $('hMsg').textContent = '❌ Le téléphone n\u2019était pas à plat. Recommence.';
+  }, 1000);
+});
+$('hOk').addEventListener('click', () => {
+  const v = parseFloat($('hVal').value);
+  if (!(v >= 100 && v <= 220)) { $('hMsg').textContent = 'Valeur invalide (100 à 220 cm).'; return; }
+  $('pTaille').value = Math.round(v);
+  $('heightPanel').classList.add('hidden'); $('profileForm').classList.remove('hidden');
+});
+
+// ===== Calibrage de la foulée par GPS =====
+let calib = false, calSteps = 0, calDist = 0, calLast = null, calWatch = null;
+function haversine(a, b) {
+  const r = x => x * Math.PI / 180, R = 6371000;
+  const dLa = r(b.latitude - a.latitude), dLo = r(b.longitude - a.longitude);
+  const h = Math.sin(dLa / 2) ** 2 + Math.cos(r(a.latitude)) * Math.cos(r(b.latitude)) * Math.sin(dLo / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function calUpdate() { $('calInfo').textContent = calSteps + ' pas · ' + calDist.toFixed(0) + ' m (GPS)'; }
+$('calBtn').addEventListener('click', async () => {
+  if (!calib) {
+    if (!navigator.geolocation) { $('calInfo').textContent = 'GPS indisponible.'; return; }
+    if (!(await requestMotionPermission())) { $('calInfo').textContent = 'Capteur de mouvement indisponible.'; return; }
+    smooth = null; baseline = null; armed = true;
+    calib = true; calSteps = 0; calDist = 0; calLast = null;
+    window.addEventListener('devicemotion', handleMotion);
+    calWatch = navigator.geolocation.watchPosition(pos => {
+      const c = pos.coords;
+      if (c.accuracy > 20) return;
+      if (!calLast) calLast = c;
+      else { const d = haversine(calLast, c); if (d >= 4) { calDist += d; calLast = c; } }
+      calUpdate();
+    }, () => { $('calInfo').textContent = '❌ Autorise la localisation.'; }, { enableHighAccuracy: true, maximumAge: 0 });
+    $('calBtn').textContent = '⏹ Terminer';
+    $('calInfo').textContent = 'Marche en ligne droite dehors…';
+  } else {
+    calib = false;
+    navigator.geolocation.clearWatch(calWatch);
+    if (!isRunning || mode !== 'auto') window.removeEventListener('devicemotion', handleMotion);
+    $('calBtn').textContent = '🎯 Calibrer ma foulée';
+    if (calDist < 30 || calSteps < 30) {
+      $('calInfo').textContent = 'Trop court (' + calSteps + ' pas, ' + calDist.toFixed(0) + ' m). Marche au moins 50 m.';
+      return;
+    }
+    const stride = Math.round(calDist * 100 / calSteps);
+    strideInput.value = stride; saveSettings(); updateDisplay(); renderUser();
+    $('calInfo').textContent = '✅ Ta foulée : ' + stride + ' cm';
+  }
+});
+
+// Nettoyage des anciens service workers (inutiles dans l'application)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(r => r.forEach(x => x.unregister())).catch(() => {});
+}
+if (profile && !heightInput.value) heightInput.value = profile.taille;
+if (profile) renderUser(); else openProfile(false);
 </script>
 
 </body>
