@@ -1,0 +1,12 @@
+- name: Préparer le projet
+        run: |
+          mkdir www
+          cp index.html manifest.json www/
+          cp ic*-192.png www/icon-192.png
+          cp ic*-512.png www/icon-512.png
+          npm init -y
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          npx cap init "Podomètre" "com.jeunescourageux.podometre" --web-dir=www
+          npx cap add android
+          sed -i 's|<application|<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <application|' android/app/src/main/AndroidManifest.xml
+          npx cap sync android
